@@ -98,4 +98,61 @@ router.post(
   }
 );
 
+// =====================
+// ✅ LOGIN BY ID ROUTE
+// Validate email and plain password for given userId
+// =====================
+router.post(
+  '/login-by-id',
+  [
+    body('userId').isInt(),
+    body('email').isEmail(),
+    body('password').notEmpty(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+      return res.status(400).json({ errors: errors.array() });
+
+    const { userId, email, password } = req.body;
+
+    try {
+      // Query user by id
+      const [rows] = await pool.query(
+        'SELECT id, email, password_hash FROM users WHERE id = ?',
+        [userId]
+      );
+
+      if (rows.length === 0) {
+        return res.status(401).json({ msg: 'Invalid credentials' });
+      }
+
+      const user = rows[0];
+
+      // Check email matches exactly
+      if (user.email.toLowerCase() !== email.toLowerCase()) {
+        return res.status(401).json({ msg: 'Invalid credentials' });
+      }
+
+      // Compare password hash
+      const match = await bcrypt.compare(password, user.password_hash);
+      if (!match) {
+        return res.status(401).json({ msg: 'Invalid credentials' });
+      }
+
+      // Generate JWT token
+      const token = jwt.sign(
+        { userId: user.id, email: user.email },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRES_IN || '1h' }
+      );
+
+      return res.json({ token });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Server error' });
+    }
+  }
+);
+
 export default router;
