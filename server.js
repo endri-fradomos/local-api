@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
+import { createServer } from 'http';
+import { initRealtime } from './realtime.js';
 
 import authRouter from './routes/auth.js';
 import usersRouter from './routes/users.js';
@@ -40,6 +42,9 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+// Replace app.listen with an HTTP server so WebSocket can share it
+const server = createServer(app);
+initRealtime(server);
+server.listen(PORT, () => {
   console.log(`✅ API listening on http://localhost:${PORT}`);
 });
