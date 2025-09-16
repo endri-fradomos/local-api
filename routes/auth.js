@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import pool from '../db.js';
 import { body, validationResult } from 'express-validator';
+import { sendWelcomeEmail } from "../utils/mailer.js"; 
 
 const router = Router();
 
@@ -41,6 +42,8 @@ router.post(
         'INSERT INTO users (username, password_hash, email, first_name, last_name, phone_number) VALUES (?, ?, ?, ?, ?, ?)',
         [username, hash, email, first_name, last_name, phone_number]
       );
+
+      sendWelcomeEmail(email, first_name);
 
       res.status(201).json({ message: 'User registered successfully' });
     } catch (err) {

@@ -5,6 +5,9 @@ import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { initRealtime } from './realtime.js';
 
+dotenv.config();
+
+
 import authRouter from './routes/auth.js';
 import usersRouter from './routes/users.js';
 import roomsRouter from './routes/rooms.js';

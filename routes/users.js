@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import pool from '../db.js';
+import { sendWelcomeEmail } from "../utils/mailer.js";
 
 const router = Router();
 
@@ -30,16 +31,18 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-// POST /users
-router.post('/', async (req, res, next) => {
+router.post("/", async (req, res, next) => {
   const { username, password, first_name, last_name, email, phone_number } = req.body;
+
   try {
     const password_hash = await bcrypt.hash(password, 10);
     const [result] = await pool.query(
-      'INSERT INTO users (username, password_hash, first_name, last_name, email, phone_number) VALUES (?, ?, ?, ?, ?, ?)',
+      "INSERT INTO users (username, password_hash, first_name, last_name, email, phone_number) VALUES (?, ?, ?, ?, ?, ?)",
       [username, password_hash, first_name, last_name, email, phone_number]
     );
-    res.status(201).json({ id: result.insertId });
+
+
+    res.status(201).json({ id: result.insertId, message: "User created and email script triggered!" });
   } catch (err) {
     next(err);
   }
