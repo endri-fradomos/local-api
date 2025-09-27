@@ -20,6 +20,12 @@ router.post('/', async (req, res, next) => {
 
     res.status(201).json({ success: true, id: result.insertId });
   } catch (err) {
+    if (err && (err.code === 'ER_NO_SUCH_TABLE' || (err.message && err.message.includes('access_permissions')))) {
+      return res.status(500).json({
+        error: 'access_permissions table is missing. Create the table to enable access-permissions writes.',
+        create_table: "CREATE TABLE access_permissions ( id INT AUTO_INCREMENT PRIMARY KEY, home_id INT NOT NULL, user_id INT NOT NULL, day_of_week TINYINT NOT NULL, start_time TIME NOT NULL, end_time TIME NOT NULL, room_name VARCHAR(255) NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (home_id) REFERENCES home(id) ON DELETE CASCADE, FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE );"
+      });
+    }
     console.error('Error inserting access permission:', err);
     next(err);
   }
@@ -48,6 +54,12 @@ router.put('/:id', async (req, res, next) => {
 
     res.json({ success: true });
   } catch (err) {
+    if (err && (err.code === 'ER_NO_SUCH_TABLE' || (err.message && err.message.includes('access_permissions')))) {
+      return res.status(500).json({
+        error: 'access_permissions table is missing. Create the table to enable access-permissions writes.',
+        create_table: "CREATE TABLE access_permissions ( id INT AUTO_INCREMENT PRIMARY KEY, home_id INT NOT NULL, user_id INT NOT NULL, day_of_week TINYINT NOT NULL, start_time TIME NOT NULL, end_time TIME NOT NULL, room_name VARCHAR(255) NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (home_id) REFERENCES home(id) ON DELETE CASCADE, FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE );"
+      });
+    }
     console.error('Error updating access permission:', err);
     next(err);
   }
@@ -64,7 +76,7 @@ router.get('/filter', async (req, res, next) => {
   try {
     // Check if user is owner of the home
     const [homeRows] = await pool.query(
-      'SELECT owner_id FROM homes WHERE id = ?',
+      'SELECT admin_id FROM home WHERE id = ?',
       [home_id]
     );
 
@@ -72,10 +84,10 @@ router.get('/filter', async (req, res, next) => {
       return res.status(404).json({ error: 'Home not found' });
     }
 
-    const ownerId = homeRows[0].owner_id;
+    const adminId = homeRows[0].admin_id;
 
-    if (ownerId.toString() === user_id.toString()) {
-      // Owner: full access to all rooms in this home
+    if (adminId.toString() === user_id.toString()) {
+      // Admin: full access to all rooms in this home
       const [allRooms] = await pool.query(
         'SELECT DISTINCT name AS room_name FROM rooms WHERE home_id = ?',
         [home_id]
@@ -83,26 +95,34 @@ router.get('/filter', async (req, res, next) => {
       return res.json(allRooms);
     }
 
-    // Not owner: check access permissions with time and day filters
+    // Not admin: check access permissions with time and day filters
     const now = new Date();
     const dayOfWeek = now.getDay(); // Sunday = 0
     const currentTime = now.toTimeString().slice(0, 8); // 'HH:MM:SS'
 
     // Query with overnight time window handling
-    const [rows] = await pool.query(
-      `SELECT DISTINCT room_name FROM access_permissions
-       WHERE home_id = ?
-         AND user_id = ?
-         AND day_of_week = ?
-         AND (
-           (start_time <= end_time AND start_time <= ? AND end_time >= ?)
-           OR
-           (start_time > end_time AND (start_time <= ? OR end_time >= ?))
-         )`,
-      [home_id, user_id, dayOfWeek, currentTime, currentTime, currentTime, currentTime]
-    );
-
-    res.json(rows);
+    try {
+      const [rows] = await pool.query(
+        `SELECT DISTINCT room_name FROM access_permissions
+         WHERE home_id = ?
+           AND user_id = ?
+           AND day_of_week = ?
+           AND (
+             (start_time <= end_time AND start_time <= ? AND end_time >= ?)
+             OR
+             (start_time > end_time AND (start_time <= ? OR end_time >= ?))
+           )`,
+        [home_id, user_id, dayOfWeek, currentTime, currentTime, currentTime, currentTime]
+      );
+      return res.json(rows);
+    } catch (err) {
+      if (err && (err.code === 'ER_NO_SUCH_TABLE' || (err.message && err.message.includes('access_permissions')))) {
+        // Table missing -> no permissions exist, return empty list (non-admin gets no access)
+        console.warn('Warning: access_permissions table missing — no non-admin permissions will be returned.');
+        return res.json([]);
+      }
+      throw err;
+    }
   } catch (err) {
     next(err);
   }
@@ -129,8 +149,16 @@ router.get('/', async (req, res, next) => {
 
     sql += ' ORDER BY day_of_week ASC, start_time ASC';
 
-    const [rows] = await pool.query(sql, params);
-    res.json(rows);
+    try {
+      const [rows] = await pool.query(sql, params);
+      res.json(rows);
+    } catch (err) {
+      if (err && (err.code === 'ER_NO_SUCH_TABLE' || (err.message && err.message.includes('access_permissions')))) {
+        console.warn('Warning: access_permissions table missing — returning empty list for permissions.');
+        return res.json([]);
+      }
+      throw err;
+    }
   } catch (err) {
     next(err);
   }
